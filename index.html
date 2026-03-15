@@ -262,30 +262,7 @@
   }
   .toast.show { opacity: 1; transform: translateX(0); }
   .toast.error { border-color: var(--red); }
-
-  .config-panel {
-    background: #1a1a1a;
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 20px;
-    margin-bottom: 24px;
-  }
-  .config-panel h3 { font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
-  .config-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
-  .config-field { display: flex; flex-direction: column; gap: 6px; }
-  .config-field label { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 1.5px; color: var(--muted); font-weight: 700; }
-  .config-field input {
-    background: var(--dark);
-    border: 1px solid var(--border);
-    color: var(--text);
-    padding: 9px 12px;
-    border-radius: 6px;
-    font-family: 'DM Sans', sans-serif;
-    font-size: 0.88rem;
-  }
-  .config-field input:focus { outline: none; border-color: var(--gold); }
-
-  .progress-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; }
+.progress-bar-wrap { height: 4px; background: var(--border); border-radius: 2px; margin-top: 6px; }
   .progress-bar { height: 100%; border-radius: 2px; background: var(--gold); transition: width 0.3s; }
 
   .divider { height: 1px; background: var(--border); margin: 14px 0; }
@@ -343,14 +320,6 @@
   <div id="notification-banner" class="notification-banner">
     ⏰ <strong>Reminder:</strong> A line check is scheduled. Please complete and submit before the window closes.
   </div>
-
-  <div class="config-panel" id="config-panel">
-    <h3>⚙ Notification & Google Sheets Setup</h3>
-    <div class="config-grid">
-      <div class="config-field">
-        <label>Google Apps Script Web App URL</label>
-        <input type="url" id="apps-script-url" placeholder="https://script.google.com/macros/s/.../exec" />
-      </div>
       <div class="config-field">
         <label>Phone Number (SMS via Twilio / or use Pushover token)</label>
         <input type="text" id="phone-number" placeholder="+15551234567" />
@@ -631,11 +600,8 @@ async function submitForm() {
   if (!location) { showToast('⚠ Please select a location.', true); return; }
   if (!selectedTime) { showToast('⚠ Please select a check time (10AM or 4PM).', true); return; }
 
-  const appsScriptUrl = document.getElementById('apps-script-url').value.trim();
-  if (!appsScriptUrl) {
-    showToast('⚠ Paste your Apps Script URL in the setup box above.', true);
-    return;
-  }
+  const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbws7OEk3ceDWeaiv0ZIGXJSv1r0LLWpVfCTNWs1wa3tM_x-6azfyykY1Xs61zR8pVCs/exec';
+
 
   const btn = document.querySelector('.submit-btn');
   btn.disabled = true;
