@@ -330,19 +330,26 @@
     </p>
   </div>
 
-  <div id="items-container"></div>
-
-  <div id="photo-section" style="margin-top:8px;margin-bottom:80px;">
-    <div style="background:var(--card-bg);border:1px solid var(--border);border-radius:12px;padding:20px;">
-      <div style="font-size:0.65rem;text-transform:uppercase;letter-spacing:1.5px;color:var(--muted);margin-bottom:12px;font-weight:700;">📷 Overall Plate / Line Photo</div>
-      <div class="upload-zone" id="main-upload-zone">
-        <input type="file" accept="image/*" id="main-photo-input" onchange="handleMainPhoto(event)" multiple>
+  <div id="photo-section" style="margin-bottom:20px;">
+    <div style="background:var(--card-bg);border:2px solid var(--red);border-radius:12px;padding:20px;">
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
+        <span style="font-family:'Bebas Neue',sans-serif;font-size:1.3rem;letter-spacing:1px;">📷 PLATE PHOTO</span>
+        <span style="background:var(--red);color:#fff;font-size:0.65rem;font-weight:700;padding:3px 8px;border-radius:4px;letter-spacing:1px;">REQUIRED</span>
+        <span style="font-size:0.75rem;color:var(--muted);">Take this before scoring — photo the full line</span>
+      </div>
+      <div class="upload-zone" id="main-upload-zone" style="border-color:var(--red);">
+        <input type="file" accept="image/*" id="main-photo-input" onchange="handleMainPhoto(event)" multiple capture="environment">
         <div class="upload-icon">📸</div>
-        <p>Tap to upload plate or line photos</p>
+        <p style="color:var(--muted);">Tap to photograph your plate / line before scoring</p>
       </div>
       <div id="main-photo-previews" style="display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;"></div>
+      <div id="plate-photo-error" style="color:var(--red);font-size:0.8rem;margin-top:8px;display:none;">⚠ Plate photo is required before submitting.</div>
     </div>
   </div>
+
+  <div id="items-container"></div>
+
+    </div>
 </main>
 
 <div class="score-summary">
@@ -476,16 +483,17 @@ function buildItems() {
             </div>
             <div class="corrective-block">
               <label>⚠ Corrective Action Taken (if not meeting standard)</label>
-              <textarea id="corrective-${item.id}" placeholder="Describe what was done to correct the product, e.g. re-seasoned, discarded batch, adjusted temperature..."></textarea>
+              <textarea id="corrective-${item.id}" oninput="toggleItemPhoto('${item.id}', this.value)" placeholder="Describe what was done to correct the product, e.g. re-seasoned, discarded batch, adjusted temperature..."></textarea>
             </div>
-            <div class="photo-upload-block">
-              <label>📷 Upload Photo of ${item.name}</label>
-              <div class="upload-zone">
-                <input type="file" accept="image/*" onchange="handleItemPhoto(event,'${item.id}')">
+            <div class="photo-upload-block" id="item-photo-block-${item.id}" style="display:none;">
+              <label>📷 Photo Required — Corrective Action Logged</label>
+              <div class="upload-zone" id="item-upload-zone-${item.id}" style="border-color:var(--red);">
+                <input type="file" accept="image/*" capture="environment" onchange="handleItemPhoto(event,'${item.id}')" id="item-photo-input-${item.id}">
                 <div class="upload-icon">📸</div>
-                <p>Tap to upload photo</p>
+                <p>Required: upload photo of this item</p>
               </div>
               <img id="preview-${item.id}" class="upload-preview" alt="preview">
+              <div id="item-photo-error-${item.id}" style="color:var(--red);font-size:0.75rem;margin-top:4px;display:none;">⚠ Photo required when corrective action is noted.</div>
             </div>
           </div>
         </div>
@@ -578,6 +586,14 @@ function handleMainPhoto(event) {
   });
 }
 
+function toggleItemPhoto(id, val) {
+  const block = document.getElementById('item-photo-block-' + id);
+  if (block) block.style.display = val.trim() ? 'block' : 'none';
+  // clear error if they hid it
+  const err = document.getElementById('item-photo-error-' + id);
+  if (err && !val.trim()) err.style.display = 'none';
+}
+
 function showToast(msg, isError = false) {
   const t = document.getElementById('toast');
   t.textContent = msg;
@@ -599,6 +615,42 @@ async function submitForm() {
   const date = document.getElementById('date-input').value;
   if (!location) { showToast('⚠ Please select a location.', true); return; }
   if (!selectedTime) { showToast('⚠ Please select a check time (10AM or 4PM).', true); return; }
+
+  // Require plate photo
+  if (mainPhotos.length === 0) {
+    document.getElementById('plate-photo-error').style.display = 'block';
+    document.getElementById('photo-section').scrollIntoView({ behavior: 'smooth' });
+    showToast('⚠ Plate photo is required before submitting.', true);
+    return;
+  }
+  document.getElementById('plate-photo-error').style.display = 'none';
+
+  // Require at least one score per item
+  let missingScore = false;
+  ITEMS_DATA.forEach(item => {
+    const v = document.querySelectorAll(`input[name="visual-${item.id}"]:checked`).length;
+    const f = document.querySelectorAll(`input[name="flavor-${item.id}"]:checked`).length;
+    if (!v || !f) missingScore = true;
+  });
+  if (missingScore) {
+    showToast('⚠ All 10 items must be scored before submitting.', true);
+    return;
+  }
+
+  // Require photo if corrective action filled
+  let missingCorrectivePhoto = false;
+  ITEMS_DATA.forEach(item => {
+    const corrective = document.getElementById('corrective-' + item.id).value.trim();
+    if (corrective && !photoData[item.id]) {
+      document.getElementById('item-photo-error-' + item.id).style.display = 'block';
+      document.getElementById('card-' + item.id).classList.add('open');
+      missingCorrectivePhoto = true;
+    }
+  });
+  if (missingCorrectivePhoto) {
+    showToast('⚠ A photo is required for each item with corrective action noted.', true);
+    return;
+  }
 
   const appsScriptUrl = 'https://script.google.com/macros/s/AKfycbws7OEk3ceDWeaiv0ZIGXJSv1r0LLWpVfCTNWs1wa3tM_x-6azfyykY1Xs61zR8pVCs/exec';
 
