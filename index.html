@@ -555,34 +555,50 @@ function recalcTotal() {
 const photoData = {};
 const mainPhotos = [];
 
+// Compress image to max 800px wide, JPEG 70% quality before uploading
+function compressImage(file, callback) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 800;
+      let w = img.width, h = img.height;
+      if (w > MAX) { h = Math.round(h * MAX / w); w = MAX; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const compressed = canvas.toDataURL('image/jpeg', 0.70);
+      callback(compressed);
+    };
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
 function handleItemPhoto(event, id) {
   const file = event.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = e => {
-    const dataUrl = e.target.result;
+  compressImage(file, dataUrl => {
     const img = document.getElementById('preview-' + id);
     img.src = dataUrl;
     img.style.display = 'block';
-    photoData[id] = { base64: dataUrl.split(',')[1], mimeType: file.type, fileName: file.name };
-  };
-  reader.readAsDataURL(file);
+    photoData[id] = { base64: dataUrl.split(',')[1], mimeType: 'image/jpeg', fileName: file.name };
+    const err = document.getElementById('item-photo-error-' + id);
+    if (err) err.style.display = 'none';
+  });
 }
 
 function handleMainPhoto(event) {
   const files = Array.from(event.target.files);
   const container = document.getElementById('main-photo-previews');
   files.forEach(file => {
-    const reader = new FileReader();
-    reader.onload = e => {
-      const dataUrl = e.target.result;
+    compressImage(file, dataUrl => {
       const img = document.createElement('img');
       img.src = dataUrl;
       img.style.cssText = 'width:120px;height:90px;object-fit:cover;border-radius:8px;border:1px solid var(--border);';
       container.appendChild(img);
-      mainPhotos.push({ base64: dataUrl.split(',')[1], mimeType: file.type, fileName: file.name });
-    };
-    reader.readAsDataURL(file);
+      mainPhotos.push({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg', fileName: file.name });
+    });
   });
 }
 
@@ -658,39 +674,37 @@ async function submitForm() {
   const btn = document.querySelector('.submit-btn');
   btn.disabled = true;
 
-  // Step 1: Upload photos one at a time, collect Drive links
-  const photoLinks = {};
-  const allPhotoEntries = Object.entries(photoData);
-  for (let i = 0; i < allPhotoEntries.length; i++) {
-    const [itemId, photo] = allPhotoEntries[i];
-    btn.textContent = `UPLOADING PHOTO ${i+1}/${allPhotoEntries.length}...`;
-    try {
-      const res = await postJSON(appsScriptUrl, {
-        action: 'uploadPhoto',
-        fileName: `${location}_${date}_${selectedTime.replace(':','').replace(' ','')}_${itemId}.jpg`,
-        mimeType: photo.mimeType,
-        base64: photo.base64,
-        folderPath: `Line Checks/${location}/${date}`
-      });
-      if (res.url) photoLinks[itemId] = res.url;
-    } catch(e) { console.warn('Photo upload failed for', itemId, e); }
-  }
+  // Upload all photos in parallel
+  btn.textContent = 'UPLOADING PHOTOS...';
+  const timeTag = selectedTime.replace(':','').replace(' ','');
 
-  // Upload main plate photos
-  const mainPhotoLinks = [];
-  for (let i = 0; i < mainPhotos.length; i++) {
-    btn.textContent = `UPLOADING PLATE PHOTO ${i+1}/${mainPhotos.length}...`;
-    try {
-      const res = await postJSON(appsScriptUrl, {
-        action: 'uploadPhoto',
-        fileName: `${location}_${date}_${selectedTime.replace(':','').replace(' ','')}_plate_${i+1}.jpg`,
-        mimeType: mainPhotos[i].mimeType,
-        base64: mainPhotos[i].base64,
-        folderPath: `Line Checks/${location}/${date}`
-      });
-      if (res.url) mainPhotoLinks.push(res.url);
-    } catch(e) { console.warn('Main photo upload failed', e); }
-  }
+  const itemUploadPromises = Object.entries(photoData).map(([itemId, photo]) =>
+    postJSON(appsScriptUrl, {
+      action: 'uploadPhoto',
+      fileName: `${location}_${date}_${timeTag}_${itemId}.jpg`,
+      mimeType: photo.mimeType,
+      base64: photo.base64,
+      folderPath: `Line Checks/${location}/${date}`
+    }).then(res => ({ itemId, url: res.url || '' })).catch(() => ({ itemId, url: '' }))
+  );
+
+  const plateUploadPromises = mainPhotos.map((photo, i) =>
+    postJSON(appsScriptUrl, {
+      action: 'uploadPhoto',
+      fileName: `${location}_${date}_${timeTag}_plate_${i+1}.jpg`,
+      mimeType: photo.mimeType,
+      base64: photo.base64,
+      folderPath: `Line Checks/${location}/${date}`
+    }).then(res => res.url || '').catch(() => '')
+  );
+
+  const [itemResults, mainPhotoLinks] = await Promise.all([
+    Promise.all(itemUploadPromises),
+    Promise.all(plateUploadPromises)
+  ]);
+
+  const photoLinks = {};
+  itemResults.forEach(({ itemId, url }) => { if (url) photoLinks[itemId] = url; });
 
   // Step 2: Submit scores + Drive links
   btn.textContent = 'SAVING SCORES...';
